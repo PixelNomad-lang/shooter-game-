@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>3D Space Shooter</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Roboto', sans-serif;
+            background: #000;
+        }
+
+        #scoreBoard,
+        #livesBoard,
+        #difficultyBoard {
+            position: absolute;
+            font-size: 18px;
+            color: #ffffff;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 8px 12px;
+            border-radius: 8px;
+            box-shadow: 0px 0px 10px rgba(0, 150, 255, 0.5);
+            transition: all 0.3s;
+            text-shadow: 0 0 5px #00a2ff;
+        }
+
+        #scoreBoard {
+            top: 15px;
+            left: 15px;
+        }
+
+        #livesBoard {
+            top: 15px;
+            right: 15px;
+        }
+
+        #difficultyBoard {
+            bottom: 15px;
+            left: 15px;
+        }
+
+        #gameOver {
+            display: none;
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: #ffcc00;
+            padding: 30px;
+            font-size: 24px;
+            text-align: center;
+            border-radius: 15px;
+            box-shadow: 0px 0px 30px rgba(0, 150, 255, 0.8);
+            border: 1px solid rgba(0, 150, 255, 0.5);
+            width: 80%;
+            max-width: 500px;
+        }
+
+        #gameOver button {
+            padding: 12px 25px;
+            font-size: 16px;
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-top: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #gameOver button:hover {
+            background-color: #0099ff;
+            transform: scale(1.05);
+        }
+
+        #quote {
+            font-size: 16px;
+            color: #aaa;
+            margin-top: 15px;
+            font-style: italic;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 15px;
+            right: 15px;
+            color: #aaa;
+            font-size: 14px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px;
+            border-radius: 5px;
+        }
+
+        #difficultySelector {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 100;
+        }
+
+        #difficultySelector h2 {
+            margin-top: 0;
+            color: #0099ff;
+        }
+
+        #difficultySelector button {
+            padding: 10px 20px;
+            margin: 10px 5px;
+            background: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #difficultySelector button:hover {
+            background: #0099ff;
+        }
+
+        .particle {
+            position: absolute;
+            background: white;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="scoreBoard">Score: 0</div>
+    <div id="livesBoard">Lives: 3</div>
+    <div id="difficultyBoard">Difficulty: Medium</div>
+    <div id="controls">
+        Move: ← → | Up: ↑ | Down: ↓ | Shoot: Space
+    </div>
+    <div id="gameOver">
+        <h2>Mission Failed</h2>
+        <p id="finalScore"></p>
+        <p id="quote"></p>
+        <button onclick="restartGame()">New Mission</button>
+    </div>
+    <div id="difficultySelector">
+        <h2>Select Difficulty</h2>
+        <button onclick="startGame('easy')">Cadet</button>
+        <button onclick="startGame('medium')">Captain</button>
+        <button onclick="startGame('hard')">Admiral</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Game state and global variables
+        let lives = 3;
+        let score = 0;
+        let isGameOver = false;
+        let enemySpeed = 0.03;
+        let bulletSpeed = 0.5;
+        let enemySpawnRate = 1000;
+        let difficulty = "medium";
+        let gameStarted = false;
+        let enemySpawnInterval;
+
+        // DOM elements
+        const livesBoard = document.getElementById("livesBoard");
+        const scoreBoard = document.getElementById("scoreBoard");
+        const difficultyBoard = document.getElementById("difficultyBoard");
+        const gameOverDiv = document.getElementById("gameOver");
+        const finalScore = document.getElementById("finalScore");
+        const quoteElement = document.getElementById("quote");
+        const difficultySelector = document.getElementById("difficultySelector");
+        const controlsDiv = document.getElementById("controls");
+
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000);
+
+        // Add stars background
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsMaterial = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.1,
+            transparent: true
+        });
+
+        const starsVertices = [];
+        for (let i = 0; i < 1000; i++) {
+            const x = (Math.random() - 0.5) * 2000;
+            const y = (Math.random() - 0.5) * 2000;
+            const z = (Math.random() - 0.5) * 2000;
+            starsVertices.push(x, y, z);
+        }
+
+        starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starsVertices, 3));
+        const stars = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(stars);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 1);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 5, 5);
+        scene.add(directionalLight);
+
+        // Camera
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
+
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Create a simple jet shape
+        const jetGeometry = new THREE.Group();
+
+        // Body
+        const bodyGeometry = new THREE.BoxGeometry(1, 0.5, 3);
+        const bodyMaterial = new THREE.MeshPhongMaterial({
+            color: 0x00ff00
+        });
+        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+        
+        // Wings
+        const wingGeometry = new THREE.BoxGeometry(0.2, 1, 1);
+        const wingMaterial = new THREE.MeshPhongMaterial({
+            color: 0x00ff00
+        });
+        const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+        leftWing.position.set(-0.8, 0, 0);
+        leftWing.rotation.z = Math.PI / 4;
+
+        const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+        rightWing.position.set(0.8, 0, 0);
+        rightWing.rotation.z = -Math.PI / 4;
+
+        // Tail
+        const tailGeometry = new THREE.BoxGeometry(0.4, 0.4, 1);
+        const tailMaterial = new THREE.MeshPhongMaterial({
+            color: 0x00ff00
+        });
+        const tail = new THREE.Mesh(tailGeometry, tailMaterial);
+        tail.position.set(0, 0, 1.5);
+
+        jetGeometry.add(body);
+        jetGeometry.add(leftWing);
+        jetGeometry.add(rightWing);
+        jetGeometry.add(tail);
+        jetGeometry.position.set(0, 0, -1.5);
+        scene.add(jetGeometry);
+
+        // Player movement speed
+        const playerSpeed = 0.1;
+
+        // Bullets array
+        const bullets = [];
+
+        // Enemies array
+        const enemies = [];
+
+        // Start the game
+        window.startGame = function (level) {
+            difficultySelector.style.display = 'none';
+            setDifficulty(level);
+            gameStarted = true;
+            controlsDiv.style.display = 'none';
+            animate();
+            enemySpawnInterval = setInterval(spawnEnemy, enemySpawnRate);
+        };
+
+        // Set difficulty
+        function setDifficulty(level) {
+            difficulty = level;
+            difficultyBoard.innerText = `Difficulty: ${level.charAt(0).toUpperCase() + level.slice(1)}`;
+
+            switch (level) {
+                case "easy":
+                    enemySpeed = 0.02;
+                    bulletSpeed = 0.4;
+                    enemySpawnRate = 1500;
+                    lives = 5;
+                    break;
+                case "medium":
+                    enemySpeed = 0.03;
+                    bulletSpeed = 0.5;
+                    enemySpawnRate = 1000;
+                    lives = 3;
+                    break;
+                case "hard":
+                    enemySpeed = 0.05;
+                    bulletSpeed = 0.6;
+                    enemySpawnRate = 700;
+                    lives = 2;
+                    break;
+            }
+
+            livesBoard.innerText = `Lives: ${lives}`;
+        }
+
+        // Spawn an enemy
+        function spawnEnemy() {
+            if (isGameOver || !gameStarted) return;
+
+            const enemyGeometry = new THREE.IcosahedronGeometry(0.8);
+            const enemyMaterial = new THREE.MeshPhongMaterial({ color: 0x00ffff });
+            const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial);
+            enemy.position.set((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 2, -20);
+            enemies.push(enemy);
+            scene.add(enemy);
+        }
+
+        // Shoot a bullet
+        function shootBullet() {
+            if (isGameOver || !gameStarted) return;
+
+            const bulletGeometry = new THREE.SphereGeometry(0.1);
+            const bulletMaterial = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            bullet.position.copy(jetGeometry.position);
+            bullet.position.z -= 0.5;
+            bullets.push(bullet);
+            scene.add(bullet);
+        }
+
+        // Restart the game
+        window.restartGame = function () {
+            score = 0;
+            isGameOver = false;
+            gameStarted = true;
+            scoreBoard.innerText = `Score: ${score}`;
+            gameOverDiv.style.display = 'none';
+
+            // Clear all enemies and bullets
+            enemies.forEach(e => scene.remove(e));
+            bullets.forEach(b => scene.remove(b));
+            enemies.length = 0;
+            bullets.length = 0;
+
+            // Reset player position
+            jetGeometry.position.set(0, 0, -1.5);
+
+            // Restart enemy spawning
+            clearInterval(enemySpawnInterval);
+            enemySpawnInterval = setInterval(spawnEnemy, enemySpawnRate);
+
+            animate();
+        };
+
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (isGameOver || !gameStarted) return;
+
+            if (e.code === 'Space') {
+                shootBullet();
+            }
+
+            if (e.code === 'ArrowLeft') {
+                jetGeometry.position.x = Math.max(-4, jetGeometry.position.x - playerSpeed);
+            }
+
+            if (e.code === 'ArrowRight') {
+                jetGeometry.position.x = Math.min(4, jetGeometry.position.x + playerSpeed);
+            }
+
+            if (e.code === 'ArrowUp') {
+                jetGeometry.position.y = Math.min(3, jetGeometry.position.y + playerSpeed); // Limit to upper bound
+            }
+
+            if (e.code === 'ArrowDown') {
+                jetGeometry.position.y = Math.max(-3, jetGeometry.position.y - playerSpeed); // Limit to lower bound
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            if (isGameOver) return;
+            requestAnimationFrame(animate);
+
+            // Update bullets
+            bullets.forEach((bullet, bulletIndex) => {
+                bullet.position.z -= bulletSpeed;
+
+                // Remove bullet if it goes out of bounds
+                if (bullet.position.z < -5) {
+                    scene.remove(bullet);
+                    bullets.splice(bulletIndex, 1);
+                }
+
+                // Check for collision with enemies
+                enemies.forEach((enemy, enemyIndex) => {
+                    const distance = bullet.position.distanceTo(enemy.position);
+
+                    // Check for a simple collision (distance check)
+                    if (distance < 1.1) {
+                        // Remove bullet and enemy
+                        scene.remove(bullet);
+                        scene.remove(enemy);
+                        bullets.splice(bulletIndex, 1);
+                        enemies.splice(enemyIndex, 1);
+
+                        // Update score
+                        score++;
+                        scoreBoard.innerText = `Score: ${score}`;
+
+                        // Break the loop since the bullet has been destroyed
+                        return;
+                    }
+                });
+            });
+
+            // Update enemies
+            enemies.forEach((enemy, index) => {
+                enemy.position.z += enemySpeed;
+
+                if (enemy.position.z > 5) {
+                    scene.remove(enemy);
+                    enemies.splice(index, 1);
+                    lives--;
+                    livesBoard.innerText = `Lives: ${lives}`;
+
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        // Game Over
+        function gameOver() {
+            isGameOver = true;
+            gameOverDiv.style.display = 'block';
+            finalScore.innerText = `Final Score: ${score}`;
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+
+</html>
